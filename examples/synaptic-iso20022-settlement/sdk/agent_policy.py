@@ -24,6 +24,7 @@ Evaluates incoming autonomous agent transactions against:
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import math
 from typing import Dict, List, Set, Optional, Tuple
 
 
@@ -57,15 +58,15 @@ class AgentPolicyEngine:
         self.daily_spent: float = 0.0
         self.current_day: str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    def _refresh_window(self):
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    def _refresh_window(self, override_day: Optional[str] = None):
+        today = override_day if override_day else datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if today != self.current_day:
             self.daily_spent = 0.0
             self.current_day = today
 
-    def evaluate_transaction(self, merchant_address: str, amount: float) -> PolicyDecision:
+    def evaluate_transaction(self, merchant_address: str, amount: float, override_day: Optional[str] = None) -> PolicyDecision:
         """Evaluate a proposed transaction against OpenEAGO Phase 3 constraints."""
-        self._refresh_window()
+        self._refresh_window(override_day)
 
         if not self.policy.active:
             return PolicyDecision(
@@ -74,26 +75,30 @@ class AgentPolicyEngine:
                 message=f"Agent {self.policy.agent_id} is deactivated or revoked on-chain.",
             )
 
-        if amount <= 0:
+        if not isinstance(amount, (int, float)) or math.isnan(amount) or math.isinf(amount) or amount <= 0:
             return PolicyDecision(
                 approved=False,
                 reason_code="INVALID_AMOUNT",
-                message="Transaction amount must be positive.",
+                message="Transaction amount must be a finite, positive number.",
             )
 
-        if amount > self.policy.max_single_tx_usd:
+        # Standard 2-decimal monetary rounding
+        normalized_amount = round(amount, 2)
+
+        if normalized_amount > self.policy.max_single_tx_usd:
             return PolicyDecision(
                 approved=False,
                 reason_code="SINGLE_LIMIT_EXCEEDED",
-                message=f"Amount ${amount:.2f} exceeds single transaction limit of ${self.policy.max_single_tx_usd:.2f}.",
+                message=f"Amount ${normalized_amount:.2f} exceeds single transaction limit of ${self.policy.max_single_tx_usd:.2f}.",
             )
 
-        if (self.daily_spent + amount) > self.policy.daily_limit_usd:
-            remaining = max(0.0, self.policy.daily_limit_usd - self.daily_spent)
+        projected_spend = round(self.daily_spent + normalized_amount, 2)
+        if projected_spend > self.policy.daily_limit_usd:
+            remaining = max(0.0, round(self.policy.daily_limit_usd - self.daily_spent, 2))
             return PolicyDecision(
                 approved=False,
                 reason_code="DAILY_LIMIT_EXCEEDED",
-                message=f"Amount ${amount:.2f} exceeds remaining daily limit of ${remaining:.2f}.",
+                message=f"Amount ${normalized_amount:.2f} exceeds remaining daily limit of ${remaining:.2f}.",
             )
 
         if self.policy.merchant_allowlist and merchant_address not in self.policy.merchant_allowlist:
@@ -109,7 +114,21 @@ class AgentPolicyEngine:
             message="Transaction satisfies all OpenEAGO Phase 3 policy bounds.",
         )
 
-    def record_spend(self, amount: float):
+    def record_spend(self, amount: float, override_day: Optional[str] = None):
         """Record spend after confirmed L1 settlement."""
-        self._refresh_window()
-        self.daily_spent += amount
+        self._refresh_window(override_day)
+        self.daily_spent = round(self.daily_spent + amount, 2)
+
+    def update_policy(self, daily_limit: Optional[float] = None, max_single_tx: Optional[float] = None):
+        """Update policy parameters and increment version."""
+        if daily_limit is not None:
+            self.policy.daily_limit_usd = round(daily_limit, 2)
+        if max_single_tx is not None:
+            self.policy.max_single_tx_usd = round(max_single_tx, 2)
+        self.policy.policy_version += 1
+
+    def allow_merchant(self, merchant_address: str):
+        self.policy.merchant_allowlist.add(merchant_address)
+
+    def revoke_merchant(self, merchant_address: str):
+        self.policy.merchant_allowlist.discard(merchant_address)

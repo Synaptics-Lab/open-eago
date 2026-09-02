@@ -25,6 +25,7 @@ from enum import Enum
 import hashlib
 import json
 import uuid
+import xml.sax.saxutils as saxutils
 from typing import Optional, Dict, Any
 
 
@@ -89,13 +90,23 @@ class Pacs008Message:
         return hashlib.sha256(canonical.encode()).hexdigest()
 
     def to_xml(self) -> str:
-        """Serialize into ISO 20022 XML representation."""
+        """Serialize into ISO 20022 XML representation with secure XML entity escaping."""
+        esc_msg_id = saxutils.escape(self.message_id)
+        esc_cre_dt = saxutils.escape(self.creation_date_time)
+        esc_e2e = saxutils.escape(self.end_to_end_id)
+        esc_dbtr = saxutils.escape(self.debtor_agent)
+        esc_dbtr_acct = saxutils.escape(self.debtor_account)
+        esc_cdtr = saxutils.escape(self.creditor_agent)
+        esc_cdtr_acct = saxutils.escape(self.creditor_account)
+        esc_purp = saxutils.escape(self.purpose_code)
+        esc_ccy = saxutils.escape(self.currency)
+
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.10">
   <FIToFICstmrCdtTrf>
     <GrpHdr>
-      <MsgId>{self.message_id}</MsgId>
-      <CreDtTm>{self.creation_date_time}</CreDtTm>
+      <MsgId>{esc_msg_id}</MsgId>
+      <CreDtTm>{esc_cre_dt}</CreDtTm>
       <NbOfTxs>1</NbOfTxs>
       <SttlmInf>
         <SttlmMtd>{self.settlement_method}</SttlmMtd>
@@ -104,14 +115,14 @@ class Pacs008Message:
     </GrpHdr>
     <CdtTrfTxInf>
       <PmtId>
-        <EndToEndId>{self.end_to_end_id}</EndToEndId>
+        <EndToEndId>{esc_e2e}</EndToEndId>
       </PmtId>
-      <IntrBkSttlmAmt Ccy="{self.currency}">{self.amount:.2f}</IntrBkSttlmAmt>
-      <Dbtr><Nm>{self.debtor_agent}</Nm></Dbtr>
-      <DbtrAcct><Id><Othr><Id>{self.debtor_account}</Id></Othr></Id></DbtrAcct>
-      <Cdtr><Nm>{self.creditor_agent}</Nm></Cdtr>
-      <CdtrAcct><Id><Othr><Id>{self.creditor_account}</Id></Othr></Id></CdtrAcct>
-      <Purp><Cd>{self.purpose_code}</Cd></Purp>
+      <IntrBkSttlmAmt Ccy="{esc_ccy}">{self.amount:.2f}</IntrBkSttlmAmt>
+      <Dbtr><Nm>{esc_dbtr}</Nm></Dbtr>
+      <DbtrAcct><Id><Othr><Id>{esc_dbtr_acct}</Id></Othr></Id></DbtrAcct>
+      <Cdtr><Nm>{esc_cdtr}</Nm></Cdtr>
+      <CdtrAcct><Id><Othr><Id>{esc_cdtr_acct}</Id></Othr></Id></CdtrAcct>
+      <Purp><Cd>{esc_purp}</Cd></Purp>
     </CdtTrfTxInf>
   </FIToFICstmrCdtTrf>
 </Document>"""
@@ -151,26 +162,34 @@ class Pacs002Receipt:
 
     def to_xml(self) -> str:
         """Serialize into ISO 20022 XML representation for regulatory auditing."""
+        esc_rcpt_id = saxutils.escape(self.receipt_id)
+        esc_ts = saxutils.escape(self.timestamp)
+        esc_orig_msg = saxutils.escape(self.original_message_id)
+        esc_orig_e2e = saxutils.escape(self.original_end_to_end_id)
+        esc_rsn_cd = saxutils.escape(self.reason_code)
+        esc_rsn_dtl = saxutils.escape(self.reason_details)
+        esc_tx_hash = saxutils.escape(self.l1_tx_hash)
+
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.12">
   <FIToFIPmtStsRpt>
     <GrpHdr>
-      <MsgId>{self.receipt_id}</MsgId>
-      <CreDtTm>{self.timestamp}</CreDtTm>
+      <MsgId>{esc_rcpt_id}</MsgId>
+      <CreDtTm>{esc_ts}</CreDtTm>
     </GrpHdr>
     <OrgnlGrpInfAndSts>
-      <OrgnlMsgId>{self.original_message_id}</OrgnlMsgId>
+      <OrgnlMsgId>{esc_orig_msg}</OrgnlMsgId>
       <OrgnlMsgNmId>pacs.008.001.10</OrgnlMsgNmId>
       <GrpSts>{self.status.value}</GrpSts>
     </OrgnlGrpInfAndSts>
     <TxInfAndSts>
-      <OrgnlEndToEndId>{self.original_end_to_end_id}</OrgnlEndToEndId>
+      <OrgnlEndToEndId>{esc_orig_e2e}</OrgnlEndToEndId>
       <TxSts>{self.status.value}</TxSts>
       <StsRsnInf>
-        <Rsn><Cd>{self.reason_code}</Cd></Rsn>
-        <AddtlInf>{self.reason_details}</AddtlInf>
+        <Rsn><Cd>{esc_rsn_cd}</Cd></Rsn>
+        <AddtlInf>{esc_rsn_dtl}</AddtlInf>
       </StsRsnInf>
-      <ClrSysRef>{self.l1_tx_hash}</ClrSysRef>
+      <ClrSysRef>{esc_tx_hash}</ClrSysRef>
     </TxInfAndSts>
   </FIToFIPmtStsRpt>
 </Document>"""

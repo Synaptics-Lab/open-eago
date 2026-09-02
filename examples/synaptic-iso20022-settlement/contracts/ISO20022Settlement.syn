@@ -21,17 +21,17 @@ contract ISO20022Settlement {
     state total_settled_volume: u128;
     state settlement_count: u64;
 
-    // Mapping: Message ID Hash -> Settlement Record
-    state settlements_executed: Map<Hash, bool>;
-    state settlements_status: Map<Hash, u8>; // 1 = ACCP (Accepted), 2 = RJCT (Rejected)
-    state settlements_amount: Map<Hash, u128>;
-    state settlements_debtor: Map<Hash, Address>;
-    state settlements_creditor: Map<Hash, Address>;
-    state settlements_timestamp: Map<Hash, u64>;
+    // Mapping: Message ID String -> Settlement Record
+    state settlements_executed: Map<String, bool>;
+    state settlements_status: Map<String, u64>; // 1 = ACCP (Accepted), 2 = RJCT (Rejected)
+    state settlements_amount: Map<String, u128>;
+    state settlements_debtor: Map<String, Address>;
+    state settlements_creditor: Map<String, Address>;
+    state settlements_timestamp: Map<String, u64>;
 
-    event Pacs008Initiated { message_id: Hash, debtor: Address, creditor: Address, amount: u128, currency: String }
-    event Pacs002Settled { message_id: Hash, status: u8, reason_code: String, block_height: u64 }
-    event Pacs002Rejected { message_id: Hash, status: u8, reason_code: String }
+    event Pacs008Initiated { message_id: String, debtor: Address, creditor: Address, amount: u128, currency: String }
+    event Pacs002Settled { message_id: String, status: u64, reason_code: String, block_height: u64 }
+    event Pacs002Rejected { message_id: String, status: u64, reason_code: String }
 
     #[writes(owner)]
     #[writes(agent_registry)]
@@ -48,6 +48,8 @@ contract ISO20022Settlement {
 
     #[reads(paused)]
     #[reads(settlements_executed)]
+    #[reads(total_settled_volume)]
+    #[reads(settlement_count)]
     #[writes(settlements_executed)]
     #[writes(settlements_status)]
     #[writes(settlements_amount)]
@@ -57,7 +59,7 @@ contract ISO20022Settlement {
     #[writes(total_settled_volume)]
     #[writes(settlement_count)]
     pub fn execute_pacs008(
-        message_id: Hash,
+        message_id: String,
         debtor: Address,
         creditor: Address,
         amount: u128,
